@@ -246,7 +246,7 @@ cc_dwnhly_yr <- function(year,
 
 cc_sftp_files <- function(sftp_con) {
 
-  if (!requireNamespace(sftp)) stop("sftp is a required package")
+  if (!requireNamespace("sftp")) stop("sftp is a required package")
 
   files_on_server_rds <- file.path(tempdir(),
                                      paste0(gsub("\\.", "-", sftp_con$server),
@@ -260,7 +260,7 @@ cc_sftp_files <- function(sftp_con) {
 
   } else {
     message(crayon::green(" - reading the FTP directory"))
-    files_on_server_fn <- sftp_listfiles(sftp_con, verbose = FALSE)[["name"]]
+    files_on_server_fn <- sftp::sftp_listfiles(sftp_con, verbose = FALSE)[["name"]]
     saveRDS(files_on_server_fn, files_on_server_rds)
 
   }
