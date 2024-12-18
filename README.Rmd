@@ -1,0 +1,204 @@
+---
+output: github_document
+---
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.path = "man/figures/README-",
+  out.width = "100%"
+)
+```
+
+# cleancimis
+
+<!-- badges: start -->
+[![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
+<!-- badges: end -->
+
+cleancimis provides a series of functions to download and clean weather station data from the CIMIS network using random forests and data from multiple stations.
+
+## Installation
+
+You can install the development version of cleancimis with:
+
+``` r
+# FILL THIS IN! HOW CAN PEOPLE INSTALL YOUR DEV PACKAGE?
+pak::install_github()
+```
+
+## Workflow
+
+### Creating a Data Directory
+
+Many of the functions in this package read and write files to disk. This is helpful so steps don't have to be repeated, and the outputs of one step can be used in subsequent steps.
+
+This requires you define a data directory. The recommended way to do this is to enter it as an environment variable (i.e., in your .Renviron file). 
+
+```
+CC_DATADIR = "D:/GitHub/cherry_chill/data_test"
+```
+
+To edit your .Renviron file within RStudio, you can run:
+
+```
+usethis::edit_r_environ()
+```
+
+Within the data directory, the functions will create subfolders for:
+
+```
+zips/annualMetric
+zips/monthlyMetric
+csvs/annualMetric
+csvs/monthlyMetric
+my_project_area/01_annual_csvs
+my_project_area/02_gappy
+my_project_area/03_gap_filled
+my_project_area/04_forests
+```
+
+### Identify which CIMIS Stations You Need to Work With
+
+`cc_stns_active(use_cache = TRUE, cache_dir = Sys.getenv("CC_CACHE"), crs = 3310)`
+
+- Download the locations of all active CIMIS stations 
+
+`cc_stn_nn(cimis_sf, nn = 4)`
+
+- Identify the nearest neighbors for each CIMIS station, getting the results back as a list
+
+`cc_stn_wall2wall(poly, cimis_sf, nn = 1)`
+
+- Identify the CIMIS stations needed to cover a polygon area of interest
+
+`cc_stn_closest(pt, cimis_sf)`
+
+- Identify the closest CIMIS station to a point (might deprecate this)
+
+`cc_pointinpoly(pt, poly)`
+
+- Utility function that checks if a point falls within a polygon
+
+### Download Functions
+
+```
+cc_dwnhly_yr(year, data_dir = Sys.getenv("CC_DATADIR"), 
+             overwrite = FALSE, 
+             sftp_user = Sys.getenv("CIMIS_SFPT_USR"),
+             sftp_pwd = Sys.getenv("CIMIS_SFPT_PWD"),
+             unzip = FALSE,
+             stations = NULL,
+             keep_zip = TRUE)
+```
+
+```
+cc_dwnhly_mth(month,
+              data_dir = Sys.getenv("CC_DATADIR"),
+              overwrite = FALSE,
+              sftp_user = Sys.getenv("CIMIS_SFPT_USR"),
+              sftp_pwd = Sys.getenv("CIMIS_SFPT_PWD"),
+              unzip = TRUE,
+              stations = NULL,
+              keep_zip = TRUE)
+```
+
+### Stacking Functions
+
+The goal of the stacking functions are to stack the CSV files for the stations of interest and save them all together as annual aggregations. 
+
+For data that was downloaded and unzipped in annual aggregations, use:
+
+```
+cc_stack_hly_yr(year,
+                stations = NULL,
+                data_dir = Sys.getenv("CC_DATADIR"),
+                proj_subdir = "my_project_area",
+                overwrite = FALSE)
+```
+
+For data that was downloaded and unzipped in monthly aggregations (i.e., for the current calendar year), use:
+
+```
+cc_stack_hly_mth(year,
+                 month = NULL,
+                 stations = NULL,
+                 data_dir = Sys.getenv("CC_DATADIR"),
+                 proj_subdir = "my_project_area",
+                 overwrite = FALSE) 
+```
+
+### Standardize CSVs and Flag Bad and Missing Data
+
+At this point in the workflow, you should have a folder of 'raw' CSV files in annual aggregations for the stations of interest.
+
+Next, we have to 'standardize' them (i.e., use a consistent set of column names and data types) and 
+
+```
+cc_stndrze_csv(year,
+               data_dir = Sys.getenv("CC_DATADIR"),
+               proj_subdir = "my_project_area",
+               overwrite = FALSE) 
+```
+
+### Visualize Data Gaps
+
+Next, you might want to visualize gaps in the data. `cc_stn_stats()` will compute the number of measurements per month for each station, which you can then visualize with ggplot.
+
+```
+cc_stn_stats <- function(year,
+                         stations,
+                         data_dir = Sys.getenv("CC_DATADIR"),
+                         proj_subdir = "my_project_area") 
+```
+
+### Fill Gaps
+
+Next, we fill in the gaps using random forests. This is the step that can take ~10-30 minutes for each station.
+
+```
+cc_fillgaps(stations,
+            nn_list,
+            nn = 4,
+            start_year,
+            end_year,
+            data_dir = Sys.getenv("CC_DATADIR"),
+            proj_subdir = "my_project_area",
+            save_forest = FALSE,
+            overwrite = FALSE,
+            processing_csv = NULL)
+```
+\
+
+### Create additional variables, predict tree temperature, and compute chill
+
+The 'final' step is to model the tree temperature by: i) creating additional variables, ii) predicting tree temperature using a saved GAM model, and iii) computing chill.
+
+This step has to be done 'on the fly' for a specific location, because even though the station data has been gapfilled, one of the additional variables used for prediction is the orchard latitude (which defines sunrise).
+
+```
+cc_treetemp(station,
+            nn_list,
+            nn = 4,
+            start_dt,
+            end_dt,
+            pt,
+            treetempgam_rds,
+            data_dir = Sys.getenv("CC_DATADIR"),
+            proj_subdir = "my_project_area",
+            all_cols = FALSE)
+```
+
+The saved GAM model is not part of the package. Instead you need to have it local, and pass the path to it as `treetempgam_rds` argument. For example:
+
+```
+treetempgam_rds = "~/TreeChillModel/gam_T_tree_0.xz.rds"
+```
+
+
+
+
+
